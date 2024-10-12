@@ -1,0 +1,274 @@
+
+-------------------------------------------------------------------------------
+--   File Name:      fixed_spi.vgen
+--   Type:           VGEN
+--   Designer:       J. Tuthill
+--   Created:        Sat Aug 12 18:20:09 2023
+--   Template Rev:   2.0
+--
+--   Title:          Vector generator for the fixed SPI driver.
+--   Description: 
+--   
+--   
+--   
+--
+--   
+-------------------------------------------------------------------------------
+
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+
+-- Add user defined use clauses under here
+
+
+
+-------------------------------------------------------------------------------
+entity fixed_spi_vgen is
+   port (
+      clk            : buffer std_logic;
+      reset_dly      : buffer std_logic;
+      rx_bytes_dly   : buffer std_logic_vector(6 downto 0);
+      data_in_dly    : buffer std_logic_vector(7 downto 0);
+      data_in_dv_dly : buffer std_logic;
+      data_rdy       : in     std_logic;
+      data_rd_en_dly : buffer std_logic;
+      data_out       : in     std_logic_vector(7 downto 0);
+      data_out_dv    : in     std_logic;
+      send_trans_dly : buffer std_logic;
+      spi_clk        : in     std_logic;
+      spi_mosi       : in     std_logic;
+      spi_miso_dly   : buffer std_logic;
+      spi_ss         : in     std_logic
+      );
+end fixed_spi_vgen;
+-------------------------------------------------------------------------------
+architecture vgen of fixed_spi_vgen is
+
+   ---------------------------------------------------------------------------
+   --                 CONSTANT, TYPE AND GENERIC DEFINITIONS                --
+   ---------------------------------------------------------------------------
+   ---------------------------------------------------------------------------
+   --  The INP_DELAY constants correspond to tester timing groups. Edit to
+   --  change INP_DELAY values from the examples below. Delete the unused
+   --  INP_DELAY constants.
+   ---------------------------------------------------------------------------
+
+   constant inp_delay : time := 3.0 ns;
+
+   constant main_clock_half_period : time := 10 ns;
+
+   constant c_test_readback_word : std_logic_vector(95 downto 0) := x"0030900DBEEFF5F5900DBEEF";
+
+   ---------------------------------------------------------------------------
+   --                          SIGNAL DECLARATIONS                          --
+   ---------------------------------------------------------------------------
+   signal reset      : std_logic;
+   signal rx_bytes   : std_logic_vector(6 downto 0);
+   signal data_in    : std_logic_vector(7 downto 0);
+   signal data_in_dv : std_logic;
+   signal data_rd_en : std_logic := '0';
+   signal send_trans : std_logic;
+   signal spi_miso   : std_logic;
+
+   signal s_output_word_shifter : std_logic_vector(95 downto 0);
+   signal s_spi_clk             : std_logic                    := '0';
+   signal s_spi_clk_rising      : std_logic;
+   signal s_spi_ss              : std_logic                    := '0';
+   signal s_spi_ss_falling      : std_logic;
+   signal s_byte_out            : std_logic_vector(7 downto 0) := (others => '0');
+
+
+   ---------------------------------------------------------------------------
+   --                        COMPONENT DECLARATIONS                         --
+   ---------------------------------------------------------------------------
+
+
+begin
+   ---------------------------------------------------------------------------
+   --                    INSTANTIATE COMPONENTS                             --
+   ---------------------------------------------------------------------------
+
+   ---------------------------------------------------------------------------
+   --                    CONCURRENT SIGNAL ASSIGNMENTS                      --
+   ---------------------------------------------------------------------------
+   ---------------------------------------------------------------------------
+   --  Use the timing groups above to assign DUT input delays with respect to
+   --  the clock. Use these to test for Setup/Hold timing violations.
+   ---------------------------------------------------------------------------
+
+   reset_dly      <= reset      after inp_delay;
+   rx_bytes_dly   <= rx_bytes   after inp_delay;
+   data_in_dly    <= data_in    after inp_delay;
+   data_in_dv_dly <= data_in_dv after inp_delay;
+   data_rd_en_dly <= data_rd_en after inp_delay;
+   send_trans_dly <= send_trans after inp_delay;
+   spi_miso_dly   <= spi_miso   after inp_delay;
+
+
+   ---------------------------------------------------------------------------
+   --                         CONCURRENT PROCESSES                          --
+   ---------------------------------------------------------------------------
+
+
+   ---------------------------------------------------------------------------
+   --  Process:       MAIN_CLOCK_GEN 
+   --  Timing Domain: MAIN
+   --  Purpose:       Generates Clock Waveform.
+   --  Outputs:       CLK 
+   --  (The following is used by av-testbench for signals in the vpat file.)
+   --  Signals in this time domain:
+   --       data_out
+   --       data_out_dv
+   --       spi_clk
+   --       spi_mosi
+   --       spi_ss
+   ---------------------------------------------------------------------------
+   main_clock_gen : process
+   begin
+      clk <= '0';
+      --  Wait for the initial start up time. 
+      --  (You can edit the times below; Constants maybe used.)
+      wait for main_clock_half_period;
+
+      endless : loop
+         clk <= '1';
+         wait for main_clock_half_period;
+         clk <= '0';
+         wait for main_clock_half_period;
+      end loop;
+
+   end process main_clock_gen;
+
+   -- process to shift out bits onto the SPI bus to imitate a device response
+   shift_out_proc : process(clk)
+   begin
+      if rising_edge(clk) then
+         s_spi_clk <= spi_clk;
+         s_spi_ss  <= spi_ss;
+         if (s_spi_ss_falling = '1') then
+            s_output_word_shifter <= c_test_readback_word;
+         elsif (s_spi_clk_rising = '1') then
+            spi_miso              <= s_output_word_shifter(95);
+            s_output_word_shifter <= s_output_word_shifter(94 downto 0) & '0';
+         end if;
+      end if;
+   end process shift_out_proc;
+   s_spi_clk_rising <= spi_clk and not(s_spi_clk);
+   s_spi_ss_falling <= spi_ss and not(s_spi_ss);
+
+   -- proces to read back the parallel data captured on the SPI interface
+   read_bytes_proc : process(clk)
+   begin
+      if rising_edge(clk) then
+         if (data_rdy = '1') then
+            data_rd_en <= '1';
+         else
+            data_rd_en <= '0';
+         end if;
+
+         if (data_out_dv = '1') then
+            s_byte_out <= data_out;
+         end if;
+      end if;
+   end process read_bytes_proc;
+
+
+
+---------------------------------------------------------------------------
+--  Process:  DRIVER
+--  Purpose:  To drive the output signals of the vector generator.
+--  Inputs:   Feedback from the DUT.
+--  Outputs:  Inputs to DUT.
+---------------------------------------------------------------------------
+
+
+   driver : process
+
+   begin
+      -----------------------------------------------------------------------
+      --  Put your test vectors here!
+      -----------------------------------------------------------------------
+      wait until (clk'event and clk = '1');
+      reset      <= '0';
+      rx_bytes   <= "0000001";
+      data_in    <= "00000000";
+      data_in_dv <= '0';
+      send_trans <= '0';
+      for i in 0 to 100 loop
+         wait until (clk'event and clk = '1');
+      end loop;
+      -- trigger a reset
+      reset      <= '1';
+      wait until (clk'event and clk = '1');
+      reset      <= '0';
+      wait until (clk'event and clk = '1');
+      for i in 0 to 50 loop
+         wait until (clk'event and clk = '1');
+      end loop;
+      
+      data_in    <= "11100000";
+      data_in_dv <= '1';
+      wait until (clk'event and clk = '1');
+      data_in_dv <= '0';
+      wait until (clk'event and clk = '1');
+      send_trans <= '1';
+      wait until (clk'event and clk = '1');
+      send_trans <= '0';
+      wait until (clk'event and clk = '1');
+
+--      data_in    <= "01010101";
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '1';
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '0';
+--      data_in    <= "00000010";
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '1';
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '0';
+--      data_in    <= "10010100";
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '1';
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '0';
+--      data_in    <= "01011000";
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '1';
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '0';
+--      wait until (clk'event and clk = '1');
+--      wait until (clk'event and clk = '1');
+--      wait until (clk'event and clk = '1');
+--      wait until (clk'event and clk = '1');
+--      send_trans <= '1';
+--      wait until (clk'event and clk = '1');
+--      send_trans <= '0';
+--      wait until (clk'event and clk = '1');
+
+--      wait until (spi_ss'event and spi_ss = '1');
+--      for i in 0 to 20 loop
+--         wait until (clk'event and clk = '1');
+--      end loop;
+--      data_in    <= "11010101";
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '1';
+--      wait until (clk'event and clk = '1');
+--      data_in_dv <= '0';
+--      wait until (clk'event and clk = '1');
+--      send_trans <= '1';
+--      wait until (clk'event and clk = '1');
+--      send_trans <= '0';
+--      wait until (clk'event and clk = '1');
+
+      endless : loop
+         wait until (clk'event and clk = '1');
+      end loop;
+
+
+   end process driver;
+
+end vgen;
+-------------------------------------------------------------------------------
